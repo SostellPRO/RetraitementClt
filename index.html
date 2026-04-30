@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Outil CSV - Reformatage ERP</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+<style>
+  /* ── Surcharges spécifiques à l'outil CSV ─────────────────────────── */
+  .app-header{
+    position:relative; /* pas fixed pour ne pas masquer le contenu */
+    height:auto;
+    padding:14px 24px;
+  }
+  .main{ padding-top:0; }
+  .header-brand-text{ display:flex; flex-direction:column; }
+  .header-brand-title{ color:#fff; font-size:16px; font-weight:800; letter-spacing:.3px; }
+  .header-brand-sub{ color:#fcd6c0; font-size:12px; font-weight:600; margin-top:2px; }
+  .current-client-pill{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:6px 14px;
+    background:rgba(255,93,24,.15);
+    border:1.5px solid var(--or);
+    border-radius:999px;
+    color:#fff; font-size:13px; font-weight:700;
+  }
+  .current-client-pill i{ color:var(--or-lt); }
+
+  /* === Layout 2 colonnes : sidebar gauche + main === */
+  .app-layout{
+    display:grid;
+    grid-template-columns:280px 1fr;
+    min-height:calc(100vh - 65px); /* hauteur écran - header */
+  }
+  .left-sidebar{
+    background:linear-gradient(180deg,#fff 0%,#f4f6fb 100%);
+    border-right:1px solid var(--g200);
+    padding:22px 16px;
+    box-shadow:inset -1px 0 0 rgba(0,0,0,.02);
+  }
+  .left-sidebar h2{
+    margin:0 0 14px 4px;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.6px;
+    color:var(--g500);
+    font-weight:700;
+  }
+  .clients-list{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  /* Adaptation .client-card pour mode sidebar (vertical, plus compact) */
+  .clients-list .client-card{
+    padding:14px 16px 14px 20px;
+    border-radius:10px;
+    box-shadow:0 2px 6px rgba(0,0,0,.05);
+    border-width:1px;
+    border-left-width:5px;
+  }
+  .clients-list .client-card .client-card-name{
+    font-size:15px;
+    padding-right:0;
+  }
+  .clients-list .client-card-meta{ margin-top:2px; }
+  .clients-list .client-card-stat{
+    padding:4px 10px;
+    font-size:12px;
+  }
+  .client-card.is-active{
+    border-left-color:var(--or-dk);
+    background:linear-gradient(135deg,#fff4ee 0%,#ffffff 100%);
+    box-shadow:0 0 0 2px rgba(255,93,24,.18), 0 8px 16px rgba(0,0,0,.08);
+  }
+  .client-card.is-active .client-card-name{ color:var(--or-dk); }
+
+  .page-container{ max-width:1100px; padding:24px 32px 60px; margin:0; }
+
+  /* Titre du client en haut de la page principale */
+  .client-page-title{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin:0 0 8px;
+    padding:0 0 14px;
+    border-bottom:2px solid var(--g200);
+    font-size:26px;
+    font-weight:800;
+    color:var(--g800);
+    letter-spacing:-.2px;
+  }
+  .client-page-title i{
+    color:var(--or);
+    font-size:24px;
+  }
+  .client-page-subtitle{
+    margin:0 0 28px;
+    font-size:13px;
+    color:var(--g500);
+  }
+  .client-page-subtitle strong{ color:var(--or); font-weight:700; }
+
+  /* Dropzone */
+  .dropzone{
+    display:block;
+    border:2.5px dashed var(--g300);
+    border-radius:var(--r-md);
+    padding:42px 24px;
+    background:linear-gradient(145deg,#fff 0%,#f8fafc 100%);
+    text-align:center;
+    cursor:pointer;
+    transition:all var(--t);
+    box-shadow:var(--sh-xs);
+  }
+  .dropzone:hover{
+    border-color:var(--or);
+    background:linear-gradient(145deg,#fffaf7 0%,#fff4ee 100%);
+    box-shadow:var(--sh-sm);
+  }
+  .dropzone.dragover{
+    border-color:var(--or);
+    border-style:solid;
+    background:#fff4ee;
+    transform:scale(1.01);
+  }
+  .dropzone-icon{
+    width:64px; height:64px;
+    margin:0 auto 12px;
+    border-radius:50%;
+    background:var(--grad-or);
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-size:24px;
+    box-shadow:var(--sh-md);
+  }
+  .dropzone p{ margin:6px 0; font-size:14px; color:var(--g600); }
+  .dropzone p strong{ color:var(--g800); font-size:15px; }
+  .dropzone .small{ font-size:12px; color:var(--g500); }
+  .dropzone input{ display:none; }
+
+  /* Bloc panneau */
+  .panel{
+    background:#fff;
+    border:1px solid var(--g200);
+    border-radius:var(--r-md);
+    padding:22px;
+    margin-bottom:18px;
+    box-shadow:var(--sh-xs);
+  }
+
+  /* Badges */
+  .badge{
+    display:inline-flex; align-items:center;
+    padding:3px 10px;
+    border-radius:999px;
+    font-size:11px; font-weight:700;
+    letter-spacing:.3px;
+    text-transform:uppercase;
+  }
+  .badge-pro{ background:#dbeafe; color:#1e3a8a; border:1px solid #93c5fd; }
+  .badge-part{ background:#fce7f3; color:#831843; border:1px solid #f9a8d4; }
+  .badge-hon{ background:#fef3c7; color:#78350f; border:1px solid #fcd34d; }
+  .badge-ok{ background:#dcfce7; color:#065f46; border:1px solid #86efac; }
+  .badge-err{ background:#fee2e2; color:#7f1d1d; border:1px solid #fca5a5; }
+
+  /* Console / journal */
+  .console-log{
+    background:var(--g900);
+    color:#cbd5e1;
+    font-family:'Consolas','Segoe UI Mono',monospace;
+    font-size:12.5px;
+    line-height:1.6;
+    padding:14px 18px;
+    border-radius:var(--r-sm);
+    max-height:280px;
+    overflow-y:auto;
+    border:1px solid var(--g700);
+  }
+  .console-log .info{ color:#93c5fd; }
+  .console-log .warn{ color:#fcd34d; }
+  .console-log .err{  color:#fca5a5; }
+  .console-log .ok{   color:#6ee7b7; }
+
+  .empty-state{
+    color:var(--g500);
+    font-size:13px;
+    text-align:center;
+    padding:32px 16px;
+  }
+  .toolbar{ display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+
+  /* Adaptation table HR */
+  .file-table-wrap{ overflow-x:auto; }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-left">
+    <div class="header-brand">
+      <div class="header-brand-text">
+        <span class="header-brand-title"><i class="fa-solid fa-file-csv"></i> &nbsp;OUTIL CSV — Reformatage pour intégration ERP</span>
+        <span class="header-brand-sub">Huissiers Réunis · Traitement local</span>
+      </div>
+    </div>
+  </div>
+  <div class="header-right" style="margin-left:auto;">
+    <div id="current-client-banner" class="current-client-pill">
+      <i class="fa-solid fa-circle-user"></i>
+      Client : <span id="current-client-name">—</span>
+    </div>
+  </div>
+</header>
+
+<div class="app-layout">
+
+  <aside class="left-sidebar">
+    <h2><i class="fa-solid fa-building" style="color:var(--or);"></i> Clients</h2>
+    <div class="clients-list" id="client-list"></div>
+  </aside>
+
+  <main class="main">
+    <div class="page-container">
+
+      <h1 class="client-page-title">
+        <i class="fa-solid fa-folder-open"></i>
+        <span id="client-title">—</span>
+      </h1>
+      <p class="client-page-subtitle">
+        Reformatage des fichiers CSV pour intégration ERP · variante <strong id="client-subtitle">—</strong>
+      </p>
+
+      <h2 class="section-title"><i class="fa-solid fa-cloud-arrow-up"></i> Dépôt des fichiers CSV</h2>
+      <div class="panel">
+        <label class="dropzone" id="dropzone">
+          <div class="dropzone-icon"><i class="fa-solid fa-arrow-down"></i></div>
+          <p><strong>Glissez-déposez ici</strong> un ou plusieurs fichiers CSV</p>
+          <p class="small">ou cliquez pour parcourir · la variante (PRO / PART / HON) est détectée automatiquement via le nom de fichier</p>
+          <input type="file" id="file-input" accept=".csv" multiple>
+        </label>
+      </div>
+
+      <h2 class="section-title"><i class="fa-solid fa-list-check"></i> Fichiers traités</h2>
+      <div class="panel">
+        <div id="file-list-container">
+          <div class="empty-state" id="empty-msg"><i class="fa-regular fa-folder-open"></i> &nbsp;Aucun fichier traité pour l'instant.</div>
+          <div class="bloc-table-wrap file-table-wrap">
+            <table class="bloc-table" id="file-table" style="display:none">
+              <thead>
+                <tr>
+                  <th>Fichier d'entrée</th>
+                  <th>Type</th>
+                  <th>Lignes in / out</th>
+                  <th>Statut</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="file-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="toolbar">
+          <button class="btn btn-primary" id="btn-download-all"><i class="fa-solid fa-download"></i> Tout télécharger</button>
+          <button class="btn btn-outline-gray" id="btn-clear"><i class="fa-solid fa-trash"></i> Vider la liste</button>
+        </div>
+      </div>
+
+      <h2 class="section-title"><i class="fa-solid fa-terminal"></i> Journal de traitement</h2>
+      <div class="panel">
+        <div class="console-log" id="console"></div>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<script>
+/* ============================================================
+   CONFIGURATION DES CLIENTS
+   ============================================================
+   Pour ajouter un nouveau client, dupliquez l'objet LBM et
+   adaptez les champs et les fonctions de transformation.
+   ============================================================ */
+
+const CLIENTS = {
+  LBM: {
+    label: "LBM Contentieux",
+    description: "Particuliers · Pro · Honoraires",
+    inputColumns: [
+      "Numéro de dossier", "Description de la dette", "Montant", "Civilite",
+      "Denomination", "Denomination complement", "Adresse 1", "Adresse 2", "Adresse 3",
+      "Ville", "Code postale", "Telephone Mobile", "Telephone Domicile", "Email",
+      "ID du Creancier", "Denomination du Creancier", "Adresse du Creancier",
+      "Ville du Creancier", "Code Postale du Creancier"
+    ],
+    outputColumns: [
+      "Numéro de dossier", "Description de la dette", "Montant", "Frais", "Civilite",
+      "Denomination", "Denomination complement", "Adresse 1", "Adresse 2", "Adresse 3",
+      "Ville", "Code postale", "Telephone Mobile", "Telephone Domicile", "Email",
+      "ID du Creancier", "Denomination du Creancier", "Adresse du Creancier",
+      "Ville du Creancier", "Code Postale du Creancier"
+    ],
+    detectVariant: function(filename, headers) {
+      const fn = filename.toUpperCase();
+      if (/_PRO[_.\s]/i.test(filename) || /\bPRO\b/i.test(filename)) return 'PRO';
+      if (/_PART[_.\s]/i.test(filename) || /\bPART\b|particulier/i.test(filename)) return 'PART';
+      if (/_HON[_.\s]/i.test(filename) || /\bHON\b|honoraire/i.test(filename)) return 'HON';
+      // Fallback : détection par contenu (présence d'Indemnité forfaitaire)
+      return 'AUTO';
+    },
+    process: processLBM
+  }
+  // Ajoutez ici d'autres clients : NOMCLIENT: { ... }
+};
+
+/* ============================================================
+   PARSEUR / SERIALISEUR CSV
+   ============================================================ */
+
+function parseCSV(text) {
+  // Suppression du BOM UTF-8
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = [];
+  let cur = '', row = [], inQuotes = false, i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i+1] === '"') { cur += '"'; i += 2; continue; }
+      if (c === '"') { inQuotes = false; i++; continue; }
+      cur += c; i++;
+    } else {
+      if (c === '"') { inQuotes = true; i++; continue; }
+      if (c === ';') { row.push(cur); cur = ''; i++; continue; }
+      if (c === '\n') { row.push(cur); rows.push(row); cur = ''; row = []; i++; continue; }
+      if (c === '\r') { i++; continue; }
+      cur += c; i++;
+    }
+  }
+  if (cur !== '' || row.length > 0) { row.push(cur); rows.push(row); }
+  // Filtrage des lignes complètement vides
+  return rows.filter(r => r.some(c => c && c.trim() !== ''));
+}
+
+function csvEscape(value) {
+  const s = String(value == null ? '' : value);
+  if (/[";\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function toCSV(rows) {
+  return '﻿' + rows.map(r => r.map(csvEscape).join(';')).join('\r\n');
+}
+
+/* ============================================================
+   FONCTIONS DE NETTOYAGE
+   ============================================================ */
+
+function cleanWhitespace(s) {
+  if (s == null) return '';
+  // Remplace TOUT caractère blanc (espace, tab \t, retour ligne \n, retour chariot \r,
+  // form feed \f, vertical tab \v, no-break space, etc.) par un espace, puis collapse,
+  // puis trim. Garantit qu'aucun champ ne contient de CR/LF/TAB → CSV monoligne.
+  return String(s).replace(/[\s ]+/g, ' ').trim();
+}
+
+function stripSemicolons(s) {
+  // Le ; est le séparateur — il ne doit JAMAIS apparaître dans un champ
+  return String(s == null ? '' : s).replace(/;/g, '');
+}
+
+function removeNdf(s) {
+  // Supprime "ndf" (insensible à la casse), à utiliser sur Adresse / CP / Ville
+  if (s == null) return '';
+  let r = String(s).replace(/\bndf\b/gi, '');
+  return cleanWhitespace(r);
+}
+
+function validateCivilite(s) {
+  const v = (s || '').trim();
+  if (/^monsieur$/i.test(v)) return 'Monsieur';
+  if (/^madame$/i.test(v)) return 'Madame';
+  if (/^soci[ée]t[ée]$/i.test(v)) return 'Société';
+  return ''; // Toute autre valeur → vide
+}
+
+function formatPhone(s) {
+  if (!s) return '';
+  let r = String(s);
+
+  // 1) Supprimer le contenu entre parenthèses (ex: "(domicile)", "(personnel)")
+  r = r.replace(/\([^)]*\)/g, '');
+
+  // 2) Détecter si l'original commence par un préfixe international (+ ou 00)
+  const isIntl = /^\s*(?:\+|00\D*\d)/.test(r);
+
+  // 3) Garder uniquement les chiffres
+  r = r.replace(/[^\d]/g, '');
+  if (!r) return '';
+
+  // 4) Si international : retirer le préfixe pays et préfixer par 0
+  //    On cible 10 chiffres (format français) et on raccourcit par la gauche.
+  //    Ex: "+33 6 84 18 84 57" -> "33684188457" -> on prend les 9 derniers + "0" -> "0684188457"
+  //    Ex: "0033 6 84..." -> "0033684188457" -> on prend les 9 derniers + "0" -> "0684188457"
+  if (isIntl) {
+    // Cas spécial 0033... (le 00 n'est pas un préfixe FR)
+    if (r.startsWith('00')) r = r.slice(2);
+    if (r.length > 10) {
+      r = '0' + r.slice(r.length - 9);
+    } else if (r.length === 10 && r[0] !== '0') {
+      // Ex: "33xxxxxxxx" sur 10 chiffres -> on remplace le 33 par 0 + 8 derniers
+      r = '0' + r.slice(2);
+    }
+  } else if (r.length === 9 && r[0] !== '0') {
+    // Cas fréquent : export Excel a tronqué le 0 initial → on le restaure
+    // Ex: "647510218" -> "0647510218"
+    r = '0' + r;
+  }
+
+  // 5) Mettre au format groupé par 2 chiffres : "06 84 18 84 57"
+  //    Si la longueur n'est pas 10, on formate quand même par paquets de 2 (signal visuel)
+  if (r.length === 0) return '';
+  return r.match(/.{1,2}/g).join(' ');
+}
+
+function consolidateAddresses(adr1, adr2, adr3) {
+  // Si Adresse 1 vide et Adresse 2 a une info → décale
+  let a1 = (adr1 || '').trim();
+  let a2 = (adr2 || '').trim();
+  let a3 = (adr3 || '').trim();
+  if (!a1 && a2) { a1 = a2; a2 = ''; }
+  if (!a1 && !a2 && a3) { a1 = a3; a3 = ''; }
+  // Décalage supplémentaire si Adresse 2 vide mais Adresse 3 a une info (et A1 OK)
+  if (a1 && !a2 && a3) { a2 = a3; a3 = ''; }
+  return [a1, a2, a3];
+}
+
+/* ============================================================
+   TRAITEMENT LBM
+   ============================================================ */
+
+function processLBM(text, variant, log) {
+  const rows = parseCSV(text);
+  if (rows.length === 0) throw new Error("Fichier vide");
+
+  // Détection de la position des colonnes via le header
+  const headers = rows[0].map(h => cleanWhitespace(h));
+  const dataRows = rows.slice(1);
+  log('info', `En-tête: ${headers.length} colonnes détectées`);
+  log('info', `${dataRows.length} ligne(s) de données`);
+
+  // Le fichier client n'a PAS la colonne Frais. Si on détecte qu'il l'a déjà,
+  // on suppose que c'est déjà un fichier en sortie (cas anormal).
+  const hasFraisCol = headers.indexOf('Frais') !== -1;
+  if (hasFraisCol) {
+    log('warn', `Le fichier comporte déjà une colonne 'Frais' — fichier déjà traité ?`);
+  }
+
+  // Index des colonnes utiles (sur l'en-tête tel quel)
+  const idx = {};
+  headers.forEach((h, i) => { idx[h] = i; });
+
+  // Si auto-détection : variant=AUTO, on déduit du contenu
+  if (variant === 'AUTO') {
+    const hasIndemnite = dataRows.some(r =>
+      /indemnit[ée] forfaitaire/i.test(r[idx['Description de la dette']] || ''));
+    variant = hasIndemnite ? 'PRO' : 'PART';
+    log('info', `Variante détectée par contenu: ${variant}`);
+  }
+
+  // Étape 1 : nettoyer chaque champ (espaces, tab, ; intra-champ, BOM)
+  const cleaned = dataRows.map(r => r.map(c => cleanWhitespace(stripSemicolons(c))));
+
+  // Étape 2 : grouper par 'Numéro de dossier'
+  const dossierIdx = idx['Numéro de dossier'];
+  const descIdx = idx['Description de la dette'];
+  const montantIdx = idx['Montant'];
+
+  const groups = new Map();
+  for (const r of cleaned) {
+    const dossier = r[dossierIdx] || '';
+    if (!groups.has(dossier)) groups.set(dossier, []);
+    groups.get(dossier).push(r);
+  }
+  log('info', `${groups.size} dossier(s) unique(s)`);
+
+  // Étape 3 : contrôle qualité PRÉALABLE — on détecte les anomalies multi-lignes
+  //
+  // Règles métier — IMPORTANT :
+  //  • PART  → la colonne Frais est TOUJOURS vide, peu importe le contenu
+  //  • PRO/HON/LBM → Frais = Montant de la ligne "Indemnité forfaitaire" si présente,
+  //                  sinon Frais reste vide (la ligne sort quand même, jamais perdue)
+  //  • Le montant de l'indemnité n'est PAS forcément 40€ — on récupère la valeur réelle
+  //  • Un dossier peut avoir 1 seule ligne (dette unique sans indemnité) → traité normalement
+  //  • Un dossier peut avoir 2 lignes (dette + indemnité)               → fusion
+  //  • Une ligne d'indemnité orpheline (sans dette) → on la conserve avec Frais vide
+  //
+  // STOP en cas de :
+  //  • Plus d'une ligne de DETTE pour un même dossier  → arrêt + rapport
+  //  • Plus d'une ligne d'INDEMNITÉ pour un même dossier → arrêt + rapport
+  //  → Le fichier N'EST PAS produit, l'utilisateur doit corriger la source.
+
+  // Contrôle qualité préalable
+  const anomalies = [];
+  for (const [dossier, lines] of groups) {
+    const debts = lines.filter(l => !/indemnit[ée] forfaitaire/i.test(l[descIdx] || ''));
+    const indems = lines.filter(l =>  /indemnit[ée] forfaitaire/i.test(l[descIdx] || ''));
+    if (debts.length > 1) {
+      anomalies.push({
+        dossier,
+        type: 'MULTI_DETTES',
+        detail: `${debts.length} lignes de dette détectées : ` +
+          debts.map(l => `"${(l[descIdx]||'').slice(0,60)}" (${l[montantIdx]||''}€)`).join(' · ')
+      });
+    }
+    if (indems.length > 1) {
+      anomalies.push({
+        dossier,
+        type: 'MULTI_INDEMNITES',
+        detail: `${indems.length} indemnités forfaitaires détectées (montants : ` +
+          indems.map(l => l[montantIdx]||'').join(', ') + ')'
+      });
+    }
+  }
+
+  if (anomalies.length > 0) {
+    // Constitution du rapport d'erreur
+    const lignes = anomalies.map(a => `  • Dossier ${a.dossier} [${a.type}] — ${a.detail}`);
+    const message = `TRAITEMENT INTERROMPU — ${anomalies.length} anomalie(s) détectée(s).\n` +
+                    `Le fichier de sortie n'a PAS été produit. Vérifiez la source pour les dossiers suivants :\n` +
+                    lignes.join('\n');
+    log('err', `${anomalies.length} anomalie(s) bloquante(s) :`);
+    anomalies.forEach(a => log('err', `  • ${a.dossier} [${a.type}] — ${a.detail}`));
+    const err = new Error(message);
+    err.anomalies = anomalies;
+    throw err;
+  }
+
+  const out = [];
+  const stats = {
+    dossiersTotal: groups.size,
+    dossiersAvecIndemnite: 0,
+    dossiersSansIndemnite: 0,
+    dossiersOrphelins: 0,
+    lignesDettes: 0,
+    lignesIndemnites: 0,
+    lignesSorties: 0
+  };
+
+  for (const [dossier, lines] of groups) {
+    // Repérer la ligne d'indemnité forfaitaire (et son montant réel)
+    let fraisFromIndem = '';
+    const debtLines = [];
+    let indemniteLine = null;
+    for (const l of lines) {
+      const desc = l[descIdx] || '';
+      if (/indemnit[ée] forfaitaire/i.test(desc)) {
+        fraisFromIndem = (l[montantIdx] || '').trim(); // valeur RÉELLE — pas hardcodée
+        indemniteLine = l;
+        stats.lignesIndemnites++;
+      } else {
+        debtLines.push(l);
+        stats.lignesDettes++;
+      }
+    }
+
+    // Détermination du Frais selon la variante
+    //   - PART : toujours vide (même si une indemnité a été détectée par erreur)
+    //   - autres : valeur de l'indemnité, ou vide si aucune
+    let frais;
+    if (variant === 'PART') {
+      frais = '';
+    } else {
+      frais = fraisFromIndem; // peut être '' si pas d'indemnité — c'est normal
+    }
+
+    if (fraisFromIndem) stats.dossiersAvecIndemnite++;
+    else stats.dossiersSansIndemnite++;
+
+    // Cas 1 : dossier avec au moins une ligne de dette → on sort chaque ligne avec le frais
+    if (debtLines.length > 0) {
+      for (const dl of debtLines) {
+        out.push(buildOutputRow(dl, idx, frais));
+        stats.lignesSorties++;
+      }
+    }
+    // Cas 2 : dossier composé uniquement d'une indemnité orpheline → on la conserve quand même
+    //         (Frais vide, montant = montant de l'indemnité, description telle quelle)
+    else if (indemniteLine) {
+      stats.dossiersOrphelins++;
+      log('warn', `Dossier ${dossier} : seulement une indemnité (sans dette) — conservée avec Frais vide`);
+      out.push(buildOutputRow(indemniteLine, idx, ''));
+      stats.lignesSorties++;
+    }
+  }
+
+  // Logging récapitulatif
+  log('info', `Variante effective: ${variant} → ${variant === 'PART' ? 'Frais TOUJOURS vide' : 'Frais = montant indemnité (variable, non hardcodé)'}`);
+  log('ok', `${stats.lignesSorties} ligne(s) sortie(s) sur ${stats.dossiersTotal} dossier(s)`);
+  log('info', `Détail : ${stats.dossiersAvecIndemnite} avec indemnité · ${stats.dossiersSansIndemnite} sans indemnité` + (stats.dossiersOrphelins ? ` · ${stats.dossiersOrphelins} orpheline(s) conservée(s)` : ''));
+
+  // Étape 4 : construire le CSV final
+  const cfg = CLIENTS.LBM;
+  const finalRows = [cfg.outputColumns, ...out];
+  return {
+    csv: toCSV(finalRows),
+    inLines: dataRows.length,
+    outLines: out.length,
+    variant: variant
+  };
+}
+
+function buildOutputRow(srcRow, idx, frais) {
+  // Construit une ligne au format de sortie (20 colonnes)
+  const get = (name) => (srcRow[idx[name]] || '').toString();
+
+  // Récupération des champs source
+  const dossier = get('Numéro de dossier');
+  let desc      = get('Description de la dette');
+  const montant = get('Montant');
+  let civilite  = get('Civilite');
+  let denom     = get('Denomination');
+  const denomC  = get('Denomination complement');
+  let adr1      = get('Adresse 1');
+  let adr2      = get('Adresse 2');
+  let adr3      = get('Adresse 3');
+  let ville     = get('Ville');
+  let cp        = get('Code postale');
+  let telMob    = get('Telephone Mobile');
+  let telDom    = get('Telephone Domicile');
+  const email   = get('Email');
+  const idCrea  = get('ID du Creancier');
+  const denomCrea = get('Denomination du Creancier');
+  const adrCrea   = get('Adresse du Creancier');
+  const villeCrea = get('Ville du Creancier');
+  const cpCrea    = get('Code Postale du Creancier');
+
+  // Transformations :
+  // - Civilité valide
+  civilite = validateCivilite(civilite);
+
+  // - Denomination : un seul espace entre les mots (déjà fait par cleanWhitespace, mais on insiste)
+  denom = cleanWhitespace(denom);
+
+  // - Adresses : retirer "ndf"
+  adr1 = removeNdf(adr1);
+  adr2 = removeNdf(adr2);
+  adr3 = removeNdf(adr3);
+  ville = removeNdf(ville);
+  cp = removeNdf(cp);
+
+  // - Adresses : consolider (Adresse 1 doit avoir une valeur si possible)
+  [adr1, adr2, adr3] = consolidateAddresses(adr1, adr2, adr3);
+
+  // - Téléphones : format chiffres uniquement
+  telMob = formatPhone(telMob);
+  telDom = formatPhone(telDom);
+
+  // - Description = Denomination du Creancier + ' ' + Description (si pas déjà préfixé)
+  const denomCreaClean = cleanWhitespace(denomCrea);
+  desc = cleanWhitespace(desc);
+  if (denomCreaClean && !desc.toLowerCase().startsWith(denomCreaClean.toLowerCase())) {
+    desc = denomCreaClean + ' ' + desc;
+  }
+
+  return [
+    dossier, desc, montant, frais, civilite,
+    denom, denomC, adr1, adr2, adr3,
+    ville, cp, telMob, telDom, email,
+    idCrea, denomCrea, adrCrea, villeCrea, cpCrea
+  ];
+}
+
+/* ============================================================
+   INTERFACE UTILISATEUR
+   ============================================================ */
+
+let currentClient = 'LBM';
+let processedFiles = []; // [{originalName, outputName, blob, variant, inLines, outLines, status}]
+
+const $console = document.getElementById('console');
+const $clientList = document.getElementById('client-list');
+const $dropzone = document.getElementById('dropzone');
+const $fileInput = document.getElementById('file-input');
+const $fileTable = document.getElementById('file-table');
+const $fileTableBody = document.getElementById('file-table-body');
+const $emptyMsg = document.getElementById('empty-msg');
+const $btnDownloadAll = document.getElementById('btn-download-all');
+const $btnClear = document.getElementById('btn-clear');
+
+function log(type, msg) {
+  const span = document.createElement('div');
+  span.className = type;
+  const ts = new Date().toLocaleTimeString('fr-FR');
+  span.textContent = `[${ts}] ${msg}`;
+  $console.appendChild(span);
+  $console.scrollTop = $console.scrollHeight;
+}
+
+function renderClients() {
+  $clientList.innerHTML = '';
+  for (const [key, cfg] of Object.entries(CLIENTS)) {
+    const card = document.createElement('div');
+    card.className = 'client-card' + (key === currentClient ? ' is-active' : '');
+    card.innerHTML = `
+      <div class="client-card-name">${cfg.label}</div>
+      <div class="client-card-meta">
+        <span class="client-card-stat"><i class="fa-solid fa-tags"></i>${cfg.description}</span>
+      </div>
+    `;
+    card.onclick = () => {
+      currentClient = key;
+      renderClients();
+      log('info', `Client sélectionné : ${cfg.label}`);
+    };
+    $clientList.appendChild(card);
+  }
+  // Mise à jour du nom de client (header pill + grand titre dans la page)
+  const cur = CLIENTS[currentClient];
+  document.getElementById('current-client-name').textContent = cur ? cur.label : '—';
+  document.getElementById('client-title').textContent = cur ? cur.label : 'Aucun client sélectionné';
+  document.getElementById('client-subtitle').textContent = cur ? cur.description : '—';
+  document.title = (cur ? cur.label + ' — ' : '') + 'Outil CSV ERP';
+}
+
+function renderFiles() {
+  if (processedFiles.length === 0) {
+    $fileTable.style.display = 'none';
+    $emptyMsg.style.display = 'block';
+    return;
+  }
+  $fileTable.style.display = 'table';
+  $emptyMsg.style.display = 'none';
+  $fileTableBody.innerHTML = '';
+  processedFiles.forEach((f, i) => {
+    const tr = document.createElement('tr');
+    const variantClass = 'badge-' + (f.variant || '?').toLowerCase();
+    const statusClass = f.status === 'OK' ? 'badge-ok' : 'badge-err';
+    const stats = (f.status === 'OK')
+      ? `${f.inLines} / ${f.outLines}`
+      : (f.anomalies ? `<strong>${f.anomalies.length}</strong> anomalie(s)` : '—');
+    const action = (f.status === 'OK')
+      ? `<button class="btn btn-primary btn-sm"><i class="fa-solid fa-download"></i> CSV</button>`
+      : (f.anomalies
+          ? `<button class="btn btn-danger btn-sm"><i class="fa-solid fa-file-lines"></i> Rapport</button>`
+          : `—`);
+    tr.innerHTML = `
+      <td>${escapeHtml(f.originalName)}</td>
+      <td><span class="badge ${variantClass}">${f.variant || '?'}</span></td>
+      <td>${stats}</td>
+      <td><span class="badge ${statusClass}">${f.status}</span></td>
+      <td>${action}</td>
+    `;
+    const btn = tr.querySelector('button');
+    if (btn) btn.onclick = () => downloadFile(f);
+    $fileTableBody.appendChild(tr);
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function downloadFile(f) {
+  const url = URL.createObjectURL(f.blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = f.outputName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function makeOutputName(inputName) {
+  const dot = inputName.lastIndexOf('.');
+  const base = dot > 0 ? inputName.slice(0, dot) : inputName;
+  const ext = dot > 0 ? inputName.slice(dot) : '.csv';
+  return base + '_traité' + ext;
+}
+
+async function handleFiles(fileList) {
+  const cfg = CLIENTS[currentClient];
+  for (const file of fileList) {
+    log('info', `========================`);
+    log('info', `Traitement de "${file.name}" (${(file.size/1024).toFixed(1)} Ko)`);
+    try {
+      const text = await file.text();
+      const variant = cfg.detectVariant(file.name);
+      log('info', `Variante: ${variant}${variant === 'AUTO' ? ' (sera affinée)' : ''}`);
+      const result = cfg.process(text, variant, log);
+      const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8' });
+      const out = {
+        originalName: file.name,
+        outputName: makeOutputName(file.name),
+        blob: blob,
+        variant: result.variant,
+        inLines: result.inLines,
+        outLines: result.outLines,
+        status: 'OK'
+      };
+      processedFiles.push(out);
+      log('ok', `✓ Terminé : ${result.inLines} → ${result.outLines} ligne(s) — ${out.outputName}`);
+      // Téléchargement automatique
+      downloadFile(out);
+    } catch (e) {
+      // Si le moteur a remonté des anomalies (cas multi-lignes), on génère un rapport
+      const hasAnomalies = Array.isArray(e.anomalies) && e.anomalies.length > 0;
+      if (hasAnomalies) {
+        log('err', `✗ TRAITEMENT BLOQUÉ pour "${file.name}" — fichier de sortie NON produit`);
+      } else {
+        log('err', `✗ Erreur : ${e.message}`);
+      }
+      const reportText = buildErrorReport(file.name, e, hasAnomalies ? e.anomalies : null);
+      const reportBlob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
+      const reportName = makeReportName(file.name);
+      processedFiles.push({
+        originalName: file.name,
+        outputName: reportName,
+        blob: reportBlob,
+        variant: hasAnomalies ? (cfg.detectVariant(file.name) || '?') : '?',
+        inLines: 0,
+        outLines: 0,
+        status: hasAnomalies ? 'BLOQUÉ' : 'ERREUR',
+        anomalies: hasAnomalies ? e.anomalies : null
+      });
+      // Téléchargement automatique du rapport
+      const last = processedFiles[processedFiles.length - 1];
+      if (last.blob) downloadFile(last);
+    }
+    renderFiles();
+  }
+}
+
+function buildErrorReport(fileName, error, anomalies) {
+  const ts = new Date().toLocaleString('fr-FR');
+  let txt = '';
+  txt += '═══════════════════════════════════════════════════════════════\n';
+  txt += '  RAPPORT D\'ERREUR — Outil CSV LBM\n';
+  txt += '═══════════════════════════════════════════════════════════════\n\n';
+  txt += `Date / heure   : ${ts}\n`;
+  txt += `Fichier source : ${fileName}\n`;
+  txt += `Statut         : TRAITEMENT INTERROMPU — fichier de sortie NON produit\n\n`;
+  if (anomalies && anomalies.length > 0) {
+    txt += `Nombre d'anomalies bloquantes : ${anomalies.length}\n\n`;
+    txt += '───────────────────────────────────────────────────────────────\n';
+    txt += '  DOSSIERS À CORRIGER DANS LE FICHIER SOURCE\n';
+    txt += '───────────────────────────────────────────────────────────────\n\n';
+    anomalies.forEach((a, i) => {
+      txt += `${(i+1).toString().padStart(3, ' ')}. Numéro de dossier : ${a.dossier}\n`;
+      txt += `     Type d'anomalie  : ${a.type}\n`;
+      txt += `     Détail           : ${a.detail}\n\n`;
+    });
+    txt += '───────────────────────────────────────────────────────────────\n';
+    txt += '  ACTION À MENER\n';
+    txt += '───────────────────────────────────────────────────────────────\n\n';
+    txt += '• MULTI_DETTES : un même numéro de dossier comporte plusieurs lignes\n';
+    txt += '  de dette différentes. Vérifiez avec le créancier si ces lignes\n';
+    txt += '  doivent être regroupées sous un même dossier ou éclatées en\n';
+    txt += '  numéros de dossier distincts.\n\n';
+    txt += '• MULTI_INDEMNITES : un même numéro de dossier comporte plusieurs\n';
+    txt += '  lignes "Indemnité forfaitaire". Vérifiez la source : il ne doit\n';
+    txt += '  y en avoir qu\'une par dossier.\n\n';
+    txt += 'Une fois la source corrigée, redéposez le fichier dans l\'outil.\n';
+  } else {
+    txt += `Message d'erreur : ${error.message}\n`;
+  }
+  return txt;
+}
+
+function makeReportName(inputName) {
+  const dot = inputName.lastIndexOf('.');
+  const base = dot > 0 ? inputName.slice(0, dot) : inputName;
+  return base + '_RAPPORT_ERREUR.txt';
+}
+
+/* === Drag & drop === */
+$dropzone.addEventListener('click', (e) => {
+  if (e.target.tagName !== 'INPUT') $fileInput.click();
+});
+$fileInput.addEventListener('change', (e) => {
+  if (e.target.files.length > 0) handleFiles(e.target.files);
+  e.target.value = '';
+});
+$dropzone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  $dropzone.classList.add('dragover');
+});
+$dropzone.addEventListener('dragleave', () => {
+  $dropzone.classList.remove('dragover');
+});
+$dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  $dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+});
+
+$btnDownloadAll.onclick = () => {
+  const ok = processedFiles.filter(f => f.status === 'OK');
+  if (ok.length === 0) { log('warn', 'Aucun fichier à télécharger'); return; }
+  ok.forEach((f, i) => setTimeout(() => downloadFile(f), i * 250));
+};
+
+$btnClear.onclick = () => {
+  processedFiles = [];
+  renderFiles();
+  log('info', 'Liste vidée');
+};
+
+/* === Initialisation === */
+renderClients();
+renderFiles();
+log('ok', 'Outil prêt. Sélectionnez un client puis déposez vos fichiers CSV.');
+log('info', `Variantes supportées : PRO (Frais = montant indemnité), PART (Frais vide), HON (idem PRO)`);
+log('info', `Détection automatique via le nom de fichier (mots-clés PRO, PART, HON, particulier, honoraire)`);
+
+</script>
+</body>
+</html>
